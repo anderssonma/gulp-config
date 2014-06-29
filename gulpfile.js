@@ -11,15 +11,20 @@ var es = require('event-stream'),
 		uglify = require('gulp-uglify'),
 		concat = require('gulp-concat'),
 		jshint = require('gulp-jshint'),
+		gulpif = require('gulp-if'),
+		cssmin = require('gulp-minify-css'),
 		stylish = require('jshint-stylish'),
 		imagemin = require('gulp-imagemin'),
+		filesize = require('gulp-filesize'),
 		preprocess = require('gulp-preprocess'),
 		browserSync = require('browser-sync');
 
-
 var assetsPath = './assets/';
+var isBrowserSyncReady = false;
 
+/*
 function removeArrayItem(arr) {
+	console.log(arguments);
 	var what, a = arguments, L = a.length, ax;
 	while (L > 1 && arr.length) {
 		what = a[--L];
@@ -29,6 +34,7 @@ function removeArrayItem(arr) {
 	}
 	return arr;
 }
+*/
 
 function getFolders(dir) {
 	return fs.readdirSync(dir)
@@ -40,8 +46,9 @@ function getFolders(dir) {
 // FROM RECIPE: https://github.com/gulpjs/gulp/blob/master/docs/recipes/running-task-steps-per-folder.md
 
 gulp.task('assets', function() { 
-	// Get folders and filter out js/css
-	var folders = removeArrayItem(getFolders(assetsPath), 'css', 'js');
+	// Get folders and filter out js/css (already filtered out earlier)
+	// var folders = removeArrayItem(getFolders(assetsPath), ['css', 'js']);
+	var folders = getFolders(assetsPath);
 	// Executes the function once per folder, and returns the async stream
 	var tasks = folders.map(function(folder) {
 		return gulp.src(path.join(assetsPath, folder, '/*'))
@@ -52,7 +59,29 @@ gulp.task('assets', function() {
 	return es.concat.apply(null, tasks);
 });
 
+gulp.task('sass', function() {
+	return gulp.src('assets/css/*.scss')
+		.pipe(sass())
+		.pipe(prefix("last 2 versions", "ie 10", "ie 9", {map: false }))
+		.pipe(concat('styles.css'))
+		.pipe(gulp.dest('build/assets/css'))
+		.pipe(gulpif(isBrowserSyncReady, browserSync.reload({stream:true})));
+});
 
+gulp.task('html', function() {
+	return gulp.src(['*.html', '!includes/']) // IGNORE INCLUDES
+		.pipe(preprocess({includeBase: 'includes'}))
+		.pipe(gulp.dest('build'))
+		.pipe(gulpif(isBrowserSyncReady, browserSync.reload({stream:true})));
+});
+
+gulp.task('js', function() {
+	return gulp.src('assets/js/*.js')
+		.pipe(jshint())
+		.pipe(jshint.reporter(stylish))
+		.pipe(concat('scripts.js'))
+		.pipe(gulp.dest('build/assets/js'))
+});
 
 gulp.task('browser-sync', function() {
 	browserSync.init(null, {
@@ -62,66 +91,67 @@ gulp.task('browser-sync', function() {
 	});
 });
 
-gulp.task('images', function() {
-	return gulp.src('assets/img/*')
-		.pipe(imagemin())
-		.pipe(gulp.dest('build/assets/img'));
-});
 
-gulp.task('sass', function() {
-	return gulp.src('assets/css/*.scss')
-		.pipe(sass())
-		.pipe(prefix("last 2 versions", "ie 10", "ie 9", {map: false }))
-		.pipe(gulp.dest('build/assets/css'))
-		.pipe(browserSync.reload({stream:true}));
-});
-
-gulp.task('html', function() {
-	return gulp.src(['*.html', '!includes/']) // IGNORE INCLUDES
-		.pipe(preprocess({includeBase: 'includes'}))
-		.pipe(gulp.dest('build'))
-		.pipe(browserSync.reload({stream:true}));
-});
-
-gulp.task('js', function() {
-	return gulp.src('assets/js/*.js')
-		.pipe(jshint())
-		.pipe(jshint.reporter(stylish))
-		.pipe(gulp.dest('build/assets/js'))
-});
-
-gulp.task('min-js', function() {
-	return gulp.src('assets/js/*.js')
-		.pipe(concat('scripts.js'))
-		.pipe(uglify())
-		.pipe(gulp.dest('build/assets/js'))
-});
-
+// OPTIMIZATION TASKS
 gulp.task('clean', function () {
 	return gulp.src('build/*', {read: false})
 		.pipe(clean());
 });
 
-// Default task to be run with `gulp`
-// Run 'Clean' before to clean up excess files
-gulp.task('default', ['sass', 'html', 'js', 'images', 'browser-sync'], function () {
+gulp.task('min-img', function() {
+	return gulp.src('build/assets/img/*')
+		.pipe(imagemin())
+		.pipe(gulp.dest('build/assets/img'));
+});
+
+gulp.task('min-js', function() {
+	return gulp.src('build/assets/js/*.js')
+		.pipe(concat('scripts.js'))
+		.pipe(filesize())
+		.pipe(uglify())
+		.pipe(filesize())
+		.pipe(gulp.dest('build/assets/js'))
+});
+
+gulp.task('min-css', function() {
+	return gulp.src('build/assets/css/*.css')
+		.pipe(concat('style.css'))
+		.pipe(filesize())
+		.pipe(cssmin())
+		.pipe(filesize())
+		.pipe(gulp.dest('build/assets/css'))
+});
+
+
+
+// OUR EXPOSED TASKS (Make others private when Gulp allows it)
+// =================
+// gulp (default)
+// gulp optmizie
+
+// Default task: move stuff to build on change, start a server and inject/reload
+gulp.task('default', ['sass', 'html', 'js', 'assets', 'browser-sync'], function () {
+	isBrowserSyncReady = true;
 	gulp.watch('assets/css/*.scss', ['sass']);
 	gulp.watch('assets/js/*.js', ['js']);
+	// If it's not JS or SCSS/CSS just move to build
+	gulp.watch(['assets/**/*', '!assets/css/**/*', '!assets/js/**/*'], ['assets']); 
 	gulp.watch(['*.html', 'partials/*.html'], ['html']);
 });
 
-gulp.task('publish', ['clean', 'sass', 'html', 'min-js'])
+// Optimize task: Clean build folder, move over files and process, minify/concat stuff and fire up server
+gulp.task('rebuild', ['sass', 'html', 'js', 'assets', 'min-img', 'min-js', 'min-css', 'browser-sync']);
+gulp.task('optimize', ['clean'], function() { // Make sure clean completes before everything else
+	gulp.run('rebuild');
+});
+
 
 
 // REPLICATING HAMMER-FOR-MAC FUNCTIONALITY IN GULP.JS
 
 // COMPLETED
-// Live-reload, compile sass, html partials, auto prefix css
-// JSHint scripts, uglify js, concat js, optimize images
+// Live-reload, compile sass, html partials, auto prefix css, move all assets to build
+// JSHint scripts, uglify js, concat js, optimize images, concat css, minify css
 
 // TODO
-// Concatenate css, Cache file changes if needed?, Move other assets (fonts/images/video etc.) to build?
-// Probably move scripts/styles to top-level. Assets for misc. resources like video, fonts and so on? Check out examples!
-
-// EXTRAS
-// File size diffs (after/before uglify), Optimized build mode,
+// Cache file changes? Most likely not needed when using gulp.watch?
