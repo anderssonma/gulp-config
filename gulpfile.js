@@ -147,11 +147,12 @@ gulp.task('optimize', ['clean'], function() { // Make sure clean completes befor
 
 
 
-// REPLICATING HAMMER-FOR-MAC FUNCTIONALITY IN GULP.JS
-
-// COMPLETED
+// REPLICATING HAMMER-FOR-MAC FUNCTIONALITY IN GULP.JS (COMPLETED!)
 // Live-reload, compile sass, html partials, auto prefix css, move all assets to build
 // JSHint scripts, uglify js, concat js, optimize images, concat css, minify css
 
 // TODO
+// Test with vendor sub-directories in assets folders
+// Don't run JSHint on vendor js
 // Cache file changes? Most likely not needed when using gulp.watch?
+// Smarter css includes? Like hammers @javascript & @stylesheet
